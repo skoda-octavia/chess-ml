@@ -24,5 +24,5 @@ def generate(filename: str):
     plt.title(f"Accuracy, leraning rate: {filename.split('.')[0].split('-')[0]}")
     plt.show()
 
-# generate("004-100000.txt")
-print(torch.cuda.is_available())
+generate("nwm.txt")
+# print(torch.cuda.is_available())
