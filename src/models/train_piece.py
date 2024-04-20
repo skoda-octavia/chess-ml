@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
-def test(device_str: str, eps_num: int, piece: str, leraning_rate = 0.03):
+def train(device_str: str, eps_num: int, piece: str, leraning_rate = 0.03):
   x_file = f"X_{piece}.pt"
   y_file = f"Y_{piece}.pt"
   model_file = f"model_{piece}.pth"
@@ -100,4 +100,4 @@ def test(device_str: str, eps_num: int, piece: str, leraning_rate = 0.03):
 if __name__ == "__main__":
   # current_time = datetime.datetime.now()
   eps = 100000
-  test("cuda", eps, "bishop", 0.01)
+  train("cuda", eps, "bishop", 0.01)
