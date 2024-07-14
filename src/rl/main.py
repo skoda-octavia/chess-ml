@@ -1,21 +1,16 @@
-import torch.nn as nn
+import os
 import torch
+import torch.nn as nn
 import torch.optim as optim
-import multiprocessing as mp
+import torch.multiprocessing as mp
 import chess
 from game import Game
 from monte import monte_carlo_value
 import requests
 
 class rl(nn.Module):
-    def __init__(
-            self,
-            input_size: int,
-            output_size: int,
-            layer_sizes: list[int],
-            dropout: float=0.1):
+    def __init__(self, input_size: int, output_size: int, layer_sizes: list[int], dropout: float=0.1):
         super(rl, self).__init__()
-
         layers = []
         flat = nn.Flatten(start_dim=1)
         layers.append(flat)
@@ -23,7 +18,7 @@ class rl(nn.Module):
         for layer in layer_sizes:
             layers.append(nn.Linear(old_size, layer))
             layers.append(nn.Dropout(dropout))
-            layers.append(nn.ReLU())
+            layers.append(nn.Tanh())
             old_size = layer
 
         layers.append(nn.Linear(old_size, output_size))
@@ -35,13 +30,15 @@ class rl(nn.Module):
         x = torch.unsqueeze(x, 0)
         return self.model(x)
 
-    def fit(self, tensor, score, optimalizer, lock):
+    def fit(self, tensor, score, optimizer, lock):
         score = torch.tensor([[score]], dtype=torch.float32)
         out = self.forward(tensor)
         loss = self.criterion(out, score)
-        loss.backward()
-        optimalizer.step()
-        optimalizer.zero_grad()
+        with lock:
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
 
     def predict(self, tensor):
         return self.forward(tensor)
@@ -56,32 +53,22 @@ def worker(fen_queue, max_pieces, games_played, model, optimizer, results, lock)
             print(f"Invalid fen: {fen}")
             continue
 
-        if len(board.piece_map()) <= max_pieces:
-            game = Game.from_board(board, transform)
-            res = monte_carlo_value(game, games_played, model, optimizer, lock)
-            mates = sum([abs(r) for r in res])
-            results.append((fen, mates))
 
-            with lock:
-                optimizer.zero_grad()
-                state = game.state().clone().detach()
-                output = model(state)
-                loss = model.criterion(output, torch.tensor([[mates]], dtype=torch.float32))
-                loss.backward()
-                optimizer.step()
+        game = Game.from_board(board, transform)
+        res = monte_carlo_value(game, games_played, model, optimizer, lock)
+        mates = sum([abs(r) for r in res])
+        print(f"finished fen, mates: {mates}, remaining: {len(fen_queue)}")
+        results.append(mates)
+
 
 def main():
     model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50])
+    # model.load_state_dict(torch.load('model_weights3.pth'))
     model.share_memory()
     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     url = 'https://wtharvey.com/'
-
-    filenames = [
-        'm8n2.txt',
-        'm8n3.txt',
-        'm8n4.txt'
-    ]
+    filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
     for local_filename in filenames:
         temp_url = url + local_filename
         response = requests.get(temp_url)
@@ -90,50 +77,51 @@ def main():
         with open(local_filename, 'wb') as file:
             file.write(response.content)
 
-    print(f"Pobrano plik: {local_filename}")
-
     fens = []
     max_pieces = 12
-    eps = 15
+    eps = 1
     games_played = 150
 
-    local_filenames = [
-        "m8n2.txt",
-        "m8n3.txt",
-        "m8n4.txt",
-    ]
+    local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
     for local_filename in local_filenames:
         with open(local_filename, 'r') as file:
             lines = file.readlines()
             for line in lines:
                 line = line.strip()
                 if ',' not in line and '-' in line and '/' in line:
-                    fens.append(line)
+                    board = chess.Board(line)
+                    if len(board.piece_map()) <= max_pieces:
+                        fens.append(line)
 
-    print(f"num of all examples: {len(fens)}")
+    fens_num = len(fens)
+    print(f"num of all examples: {fens_num}")
 
-    num_processes = mp.cpu_count()  # Liczba dostępnych procesorów
+    num_processes = mp.cpu_count()
+    print(f"proc num: {num_processes}")
 
-    with mp.Manager() as manager:
-        fen_queue = manager.Queue()
-        results = manager.list()
-        lock = manager.Lock()
+    for i in range(eps):
+        with mp.Manager() as manager:
+            fen_queue = manager.Queue()
+            results = manager.list()
+            lock = mp.RLock()
 
-        for fen in fens:
-            fen_queue.put(fen)
+            for fen in fens:
+                fen_queue.put(fen)
 
-        processes = []
-        for _ in range(num_processes):
-            p = mp.Process(target=worker, args=(fen_queue, max_pieces, games_played, model, optimizer, results, lock))
-            processes.append(p)
-            p.start()
+            processes = []
+            for _ in range(num_processes):
+                p = mp.Process(target=worker, args=(fen_queue, max_pieces, games_played, model, optimizer, results, lock))
+                processes.append(p)
+                p.start()
 
-        for p in processes:
-            p.join()
+            for p in processes:
+                p.join()
 
-        print(f"Results: {list(results)}")
+            mean = sum(results) / len(results)
+            print(f"eps: {i+4}, res mean: {mean}")
 
-    torch.save(model.state_dict(), 'model_weights.pth')
+        torch.save(model.state_dict(), f"model_weights{i+4}.pth")
 
 if __name__ == '__main__':
+    mp.set_start_method('fork', force=True)
     main()

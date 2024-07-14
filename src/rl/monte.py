@@ -35,9 +35,6 @@ def playout_value(game: Game, model, optimalizer, lock):
     if game.over():
         score = torch.tensor(game.score())
         record(game, score, model, optimalizer, lock)
-        if score.item() != 0:
-            print(game.board)
-            print(f"--------------: {score.item()}")
         return torch.tensor(score.item())
 
     action_heuristic_dict = {}
