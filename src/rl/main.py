@@ -5,45 +5,11 @@ import torch.optim as optim
 import torch.multiprocessing as mp
 import chess
 from game import Game
-from monte import monte_carlo_value
+from monte import monte_carlo_value, evaluate_model, monte_carlo_move_function
 import requests
+from model import rl
+from copy import deepcopy
 
-class rl(nn.Module):
-    def __init__(self, input_size: int, output_size: int, layer_sizes: list[int], dropout: float=0.1):
-        super(rl, self).__init__()
-        layers = []
-        flat = nn.Flatten(start_dim=1)
-        layers.append(flat)
-        old_size = input_size
-        for layer in layer_sizes:
-            layers.append(nn.Linear(old_size, layer))
-            layers.append(nn.Dropout(dropout))
-            layers.append(nn.Tanh())
-            old_size = layer
-
-        layers.append(nn.Linear(old_size, output_size))
-        layers.append(nn.Tanh())
-        self.model = nn.Sequential(*layers)
-        self.criterion = nn.MSELoss()
-
-    def forward(self, x):
-        return self.model(x)
-
-    def fit(self, tensor, score, optimizer, lock):
-        # print(f"updating model: {id(self)}, pid: {os.getpid()}")
-        out = self.forward(tensor)
-        out = torch.squeeze(out)
-        loss = self.criterion(out, score)
-        with lock:
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-        del out
-        del score
-
-
-    def predict(self, tensor):
-        return self.forward(tensor)
 
 def worker(
         fen_queue,
@@ -52,7 +18,9 @@ def worker(
         optimizer,
         results,
         lock,
-        device
+        device,
+        game_timeout,
+        exploration
     ):
     while not fen_queue.empty():
         fen = fen_queue.get()
@@ -66,7 +34,7 @@ def worker(
 
 
         game = Game.from_board(board, transform)
-        res = monte_carlo_value(game, games_played, model, optimizer, lock, device)
+        res = monte_carlo_value(game, games_played, model, optimizer, lock, device, game_timeout, exploration)
         mates = sum([abs(r) for r in res])
         # print(f"finished fen, mates: {mates}, remaining: {fen_queue.qsize()}")
         results.append(mates)
@@ -100,6 +68,8 @@ def main():
     max_pieces = 14
     eps = 15
     games_played = 150
+    game_timeout = 100
+    exploration = 3
 
     local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
     for local_filename in local_filenames:
@@ -128,6 +98,22 @@ def main():
     #         fen_queue.put(fen)
     #     worker(fen_queue, games_played, model, optimizer, results, lock, device)
 
+        # eval_model = deepcopy(model)
+        # print(id(eval_model))
+        # print(id(model))
+        # evaluate_model(
+        #     monte_carlo_move_function,
+        #     20,
+        #     eval_model,
+        #     optimizer,
+        #     lock,
+        #     device,
+        #     100,
+        #     1,
+        #     1,
+        #     20      
+        # )
+
     for i in range(eps):
         with mp.Manager() as manager:
             fen_queue = manager.Queue()
@@ -138,6 +124,27 @@ def main():
                 fen_queue.put(fen)
 
             processes = []
+
+            eval_model = deepcopy(model)
+            
+            eval_proc = mp.Process(
+                target=evaluate_model,
+                args=(
+                    monte_carlo_move_function,
+                    10,
+                    eval_model,
+                    optimizer,
+                    lock,
+                    device,
+                    100,
+                    1,
+                    i,
+                    10
+                    )
+                )
+            eval_proc.start()
+            processes.append(eval_proc)
+
             for _ in range(num_processes):
                 p = mp.Process(
                     target=worker,
@@ -148,7 +155,9 @@ def main():
                         optimizer,
                         results,
                         lock,
-                        device
+                        device,
+                        game_timeout,
+                        exploration
                         )
                     )
                 processes.append(p)

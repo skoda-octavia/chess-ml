@@ -4,6 +4,7 @@ from game import Game
 import torch
 import chess
 import gc
+from stockfish import Stockfish
 
 
 def record(game, score, model, optimalizer, lock, pos_stack: list, device):
@@ -28,6 +29,9 @@ def get_move(heus_gpu: torch.Tensor, moves: list[chess.Move], white_moves, to_co
     bias = torch.min(heus)
     if bias < 0:
         heus -= bias
+    if to_consider == 1:
+        best = torch.argmax(heus).item()
+        return moves[best]
     to_consider = min(to_consider, len(heus))
     topk_values, topk_indices = torch.topk(heus, to_consider)
     topk_values += const_bias
@@ -38,9 +42,19 @@ def get_move(heus_gpu: torch.Tensor, moves: list[chess.Move], white_moves, to_co
     return moves[selected_index.item()]
 
 
-def playout_value(game: Game, model, optimalizer, lock, device, pos_stack):
+def playout_value(
+        game: Game,
+        model,
+        optimalizer,
+        lock,
+        device,
+        pos_stack,
+        game_timeout,
+        exploration,
+        update = True
+    ):
     pos_stack.append(game.tensor)
-    if game.over():
+    if game.over(game_timeout):
         # print(len(game.board.move_stack))
         # print(game.board)
         # print(f"---------------: {game.score()}")
@@ -56,21 +70,126 @@ def playout_value(game: Game, model, optimalizer, lock, device, pos_stack):
     final = torch.stack(next_states).to(device)
     heus = model.predict(final)
     del final
-    move = get_move(heus, moves, game.board.turn)
+    move = get_move(heus, moves, game.board.turn, exploration)
 
     next_game = game.copy()
     next_game.make_move(move)
 
-    value = playout_value(next_game, model, optimalizer, lock, device, pos_stack)
-    if len(game.board.move_stack) == 0:
+    value = playout_value(next_game, model, optimalizer, lock, device, pos_stack, game_timeout, exploration)
+    if len(game.board.move_stack) == 0 and update:
         record(game, value, model, optimalizer, lock, pos_stack, device)
 
     return value
 
-def monte_carlo_value(game, N, model, optimalizer, lock, device):
+def monte_carlo_value(
+        game,
+        N,
+        model,
+        optimalizer,
+        lock,
+        device,
+        game_timeout,
+        exploration,
+        update=True
+        ):
     res = []
     for _ in range(N):
-        res.append(playout_value(game, model, optimalizer, lock, device, []))
+        res.append(playout_value(game, model, optimalizer, lock, device, [], game_timeout, exploration, update))
     gc.collect()
     torch.cuda.empty_cache()
     return res
+
+
+stockfish_path = r"src/rl/stockfish-ubuntu-x86-64-avx2"
+
+def update_elo(current_elo, opponent_elo, result, k=32):
+    expected_score = 1 / (1 + 10 ** ((opponent_elo - current_elo) / 400))
+    new_elo = current_elo + k * (result - expected_score)
+    return new_elo
+
+def evaluate_model(
+        model_move_function,
+        games_played,
+        model,
+        optimizer,
+        lock,
+        device,
+        game_timeout,
+        exploration,
+        eps,
+        games=100,
+        initial_elo=600
+        ):
+    stockfish = Stockfish(stockfish_path)
+    stockfish.set_elo_rating(initial_elo)
+    model_elo = initial_elo
+
+    for i in range(games):
+        board = chess.Board()
+        game = Game.from_board(board, False)
+        while not board.is_game_over():
+            if board.turn == chess.WHITE:
+                move = model_move_function(
+                    game,
+                    games_played,
+                    model,
+                    optimizer,
+                    lock,
+                    device,
+                    game_timeout,
+                    exploration,
+                )
+            else:
+                stockfish.set_fen_position(board.fen())
+                move = chess.Move.from_uci(stockfish.get_best_move())
+            game.make_move(move)
+
+        result = board.result()
+        if result == "1-0":
+            model_result = 1
+        elif result == "0-1":
+            model_result = 0
+        else:
+            model_result = 0.5
+
+        model_elo = update_elo(model_elo, model_elo, model_result)
+        stockfish.set_elo_rating(int(model_elo))
+        print(f"Game {i} run, res: {result}")
+    print(f"elo for eps {eps}: {model_elo}")
+
+    return model_elo
+
+def monte_carlo_move_function(
+        game: Game,
+        games_played,
+        model,
+        optimizer,
+        lock,
+        device,
+        game_timeout,
+        exploration
+    ):
+    legal_moves = list(game.board.legal_moves)
+    values = []
+    for move in legal_moves:
+        temp_game = game.copy()
+        temp_game.make_move(move)
+        results = monte_carlo_value(
+            temp_game,
+            games_played,
+            model,
+            optimizer,
+            lock,
+            device,
+            game_timeout,
+            exploration,
+            update=False
+            )
+        move_val = sum(results) / len(results)
+        values.append(move_val)
+    
+    if game.board.turn:
+        idx = torch.argmax(torch.tensor(values)).item()
+    else:
+        idx = torch.argmin(torch.tensor(values)).item()
+    return legal_moves[idx]

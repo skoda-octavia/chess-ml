@@ -18,6 +18,22 @@ class Game:
         -6: chess.Piece(chess.KING, chess.BLACK),
         0: None
     }
+    
+    piece_val = {
+        'p' : -1,
+        'n' : -3,
+        'b' : -3,
+        'r' : -5,
+        'q' : -9,
+        'P' : 1,
+        'N' : 3,
+        'B' : 3,
+        'R' : 5,
+        'Q' : 9,
+        'K' : 0,
+        'k' : 0
+    }
+
 
     @staticmethod
     def from_tensor(tensor: torch.Tensor):
@@ -77,6 +93,14 @@ class Game:
 
     def state(self):
         return self.tensor
+    
+    def points_evaluation(self):
+        starting_points = 40
+        val = 0
+        for piece in self.board.piece_map().values():
+            val += self.piece_val[piece.symbol()]
+        return val / starting_points
+
 
     def over(self, timeout=100):
         self.outcome = self.board.outcome()
@@ -89,7 +113,7 @@ class Game:
     def score(self):
         winner = self.outcome.winner
         if winner is None:
-            return 0
+            return self.points_evaluation()
         return 1 if winner == chess.WHITE else -1
 
     def valid_moves(self):
