@@ -99,7 +99,7 @@ class Game:
         val = 0
         for piece in self.board.piece_map().values():
             val += self.piece_val[piece.symbol()]
-        return val / starting_points
+        return 0.5 + (val / starting_points)
 
 
     def over(self, timeout=100):
@@ -114,7 +114,10 @@ class Game:
         winner = self.outcome.winner
         if winner is None:
             return self.points_evaluation()
-        return 1 if winner == chess.WHITE else -1
+        if winner == chess.WHITE:
+            return 1
+        else:
+            return 0
 
     def valid_moves(self):
         return self.board.legal_moves

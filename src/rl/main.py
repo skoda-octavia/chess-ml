@@ -42,10 +42,10 @@ def worker(
 
 def main():
     model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50])
-    # model.load_state_dict(torch.load('model_weights3.pth'))
+    # model.load_state_dict(torch.load('model_weights9.pth'))
     model.share_memory()
     
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -65,9 +65,9 @@ def main():
             file.write(response.content)
 
     fens = []
-    max_pieces = 14
-    eps = 15
-    games_played = 150
+    max_pieces = 20
+    eps = 60
+    games_played = 50
     game_timeout = 100
     exploration = 3
 
@@ -86,7 +86,7 @@ def main():
     print(f"num of all examples: {fens_num}")
 
     # num_processes = int(mp.cpu_count() /2)
-    num_processes = 12
+    num_processes = 24
     print(f"proc num: {num_processes}")
 
     #debug
@@ -96,7 +96,17 @@ def main():
     #     lock = mp.RLock()
     #     for fen in fens:
     #         fen_queue.put(fen)
-    #     worker(fen_queue, games_played, model, optimizer, results, lock, device)
+    #     worker(
+    #                                 fen_queue,
+    #                     games_played,
+    #                     model,
+    #                     optimizer,
+    #                     results,
+    #                     lock,
+    #                     device,
+    #                     game_timeout,
+    #                     exploration
+    #     )
 
         # eval_model = deepcopy(model)
         # print(id(eval_model))
@@ -125,25 +135,25 @@ def main():
 
             processes = []
 
-            eval_model = deepcopy(model)
+            # eval_model = deepcopy(model)
             
-            eval_proc = mp.Process(
-                target=evaluate_model,
-                args=(
-                    monte_carlo_move_function,
-                    10,
-                    eval_model,
-                    optimizer,
-                    lock,
-                    device,
-                    100,
-                    1,
-                    i,
-                    10
-                    )
-                )
-            eval_proc.start()
-            processes.append(eval_proc)
+            # eval_proc = mp.Process(
+            #     target=evaluate_model,
+            #     args=(
+            #         monte_carlo_move_function,
+            #         10,
+            #         eval_model,
+            #         optimizer,
+            #         lock,
+            #         device,
+            #         100,
+            #         1,
+            #         i,
+            #         10
+            #         )
+            #     )
+            # eval_proc.start()
+            # processes.append(eval_proc)
 
             for _ in range(num_processes):
                 p = mp.Process(
@@ -167,9 +177,9 @@ def main():
                 p.join()
 
             mean = sum(results) / len(results)
-            print(f"eps: {i+4}, res mean: {mean}")
+            print(f"eps: {i}, res mean: {mean}")
 
-        torch.save(model.state_dict(), f"model_weights{i+4}.pth")
+        torch.save(model.state_dict(), f"model_weights{i}.pth")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

@@ -12,11 +12,11 @@ class rl(nn.Module):
         for layer in layer_sizes:
             layers.append(nn.Linear(old_size, layer))
             layers.append(nn.Dropout(dropout))
-            layers.append(nn.Tanh())
+            layers.append(nn.ReLU())
             old_size = layer
 
         layers.append(nn.Linear(old_size, output_size))
-        layers.append(nn.Tanh())
+        layers.append(nn.ReLU())
         self.model = nn.Sequential(*layers)
         self.criterion = nn.MSELoss()
 
