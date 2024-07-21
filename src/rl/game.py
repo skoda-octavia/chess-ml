@@ -78,8 +78,12 @@ class Game:
     def state(self):
         return self.tensor
 
-    def over(self):
+    def over(self, timeout=100):
         self.outcome = self.board.outcome()
+        if self.outcome is None and len(self.board.move_stack) == timeout:
+            self.outcome = chess.Outcome(chess.Termination.SEVENTYFIVE_MOVES, None)
+            return True
+
         return False if self.outcome is None else True
 
     def score(self):

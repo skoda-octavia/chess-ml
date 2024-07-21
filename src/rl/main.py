@@ -27,25 +27,36 @@ class rl(nn.Module):
         self.criterion = nn.MSELoss()
 
     def forward(self, x):
-        x = torch.unsqueeze(x, 0)
         return self.model(x)
 
     def fit(self, tensor, score, optimizer, lock):
-        score = torch.tensor([[score]], dtype=torch.float32)
+        # print(f"updating model: {id(self)}, pid: {os.getpid()}")
         out = self.forward(tensor)
+        out = torch.squeeze(out)
         loss = self.criterion(out, score)
         with lock:
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+        del out
+        del score
 
 
     def predict(self, tensor):
         return self.forward(tensor)
 
-def worker(fen_queue, max_pieces, games_played, model, optimizer, results, lock):
+def worker(
+        fen_queue,
+        games_played,
+        model,
+        optimizer,
+        results,
+        lock,
+        device
+    ):
     while not fen_queue.empty():
         fen = fen_queue.get()
+        # print(f"{fen_queue.qsize()} remain")
         transform = False
         try:
             board = chess.Board(fen)
@@ -55,9 +66,9 @@ def worker(fen_queue, max_pieces, games_played, model, optimizer, results, lock)
 
 
         game = Game.from_board(board, transform)
-        res = monte_carlo_value(game, games_played, model, optimizer, lock)
+        res = monte_carlo_value(game, games_played, model, optimizer, lock, device)
         mates = sum([abs(r) for r in res])
-        print(f"finished fen, mates: {mates}, remaining: {len(fen_queue)}")
+        # print(f"finished fen, mates: {mates}, remaining: {fen_queue.qsize()}")
         results.append(mates)
 
 
@@ -65,7 +76,15 @@ def main():
     model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50])
     # model.load_state_dict(torch.load('model_weights3.pth'))
     model.share_memory()
+    
     optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+    print(f"device: {device}")
+    model = model.to(device)
 
     url = 'https://wtharvey.com/'
     filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
@@ -78,8 +97,8 @@ def main():
             file.write(response.content)
 
     fens = []
-    max_pieces = 12
-    eps = 1
+    max_pieces = 14
+    eps = 15
     games_played = 150
 
     local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
@@ -96,8 +115,18 @@ def main():
     fens_num = len(fens)
     print(f"num of all examples: {fens_num}")
 
-    num_processes = mp.cpu_count()
+    # num_processes = int(mp.cpu_count() /2)
+    num_processes = 12
     print(f"proc num: {num_processes}")
+
+    #debug
+    # with mp.Manager() as manager:
+    #     fen_queue = manager.Queue()
+    #     results = manager.list()
+    #     lock = mp.RLock()
+    #     for fen in fens:
+    #         fen_queue.put(fen)
+    #     worker(fen_queue, games_played, model, optimizer, results, lock, device)
 
     for i in range(eps):
         with mp.Manager() as manager:
@@ -110,7 +139,18 @@ def main():
 
             processes = []
             for _ in range(num_processes):
-                p = mp.Process(target=worker, args=(fen_queue, max_pieces, games_played, model, optimizer, results, lock))
+                p = mp.Process(
+                    target=worker,
+                    args=(
+                        fen_queue,
+                        games_played,
+                        model,
+                        optimizer,
+                        results,
+                        lock,
+                        device
+                        )
+                    )
                 processes.append(p)
                 p.start()
 
@@ -123,5 +163,5 @@ def main():
         torch.save(model.state_dict(), f"model_weights{i+4}.pth")
 
 if __name__ == '__main__':
-    mp.set_start_method('fork', force=True)
+    mp.set_start_method('forkserver', force=True)
     main()
