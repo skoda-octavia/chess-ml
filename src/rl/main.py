@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.multiprocessing as mp
 import chess
-from game import Game
+from src.rl.gameEnv import Game
 from monte import monte_carlo_value, evaluate_model, monte_carlo_move_function
 import requests
 from model import rl
@@ -32,17 +32,23 @@ def worker(
             print(f"Invalid fen: {fen}")
             continue
 
-
+            
         game = Game.from_board(board, transform)
-        res = monte_carlo_value(game, games_played, model, optimizer, lock, device, game_timeout, exploration)
-        mates = sum([abs(r) for r in res])
+        
+        for move in game.valid_moves():
+            tempTensor = game.simulate_move(move)
+            temp_game = Game.from_tensor(tempTensor)
+            temp_game.board.turn = not game.board.turn
+            res = monte_carlo_value(temp_game, games_played, model, optimizer, lock, device, game_timeout, exploration)
+            score = sum([abs(r) for r in res])
+        
         # print(f"finished fen, mates: {mates}, remaining: {fen_queue.qsize()}")
-        results.append(mates)
+        results.append(score)
 
 
 def main():
-    model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50])
-    # model.load_state_dict(torch.load('model_weights9.pth'))
+    model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50], 0.3)
+    model.load_state_dict(torch.load('model_weights99.pth'))
     model.share_memory()
     
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -66,10 +72,10 @@ def main():
 
     fens = []
     max_pieces = 20
-    eps = 60
-    games_played = 50
+    eps = 50
+    games_played = 10
     game_timeout = 100
-    exploration = 3
+    exploration = 1
 
     local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
     for local_filename in local_filenames:
@@ -108,22 +114,6 @@ def main():
     #                     exploration
     #     )
 
-        # eval_model = deepcopy(model)
-        # print(id(eval_model))
-        # print(id(model))
-        # evaluate_model(
-        #     monte_carlo_move_function,
-        #     20,
-        #     eval_model,
-        #     optimizer,
-        #     lock,
-        #     device,
-        #     100,
-        #     1,
-        #     1,
-        #     20      
-        # )
-
     for i in range(eps):
         with mp.Manager() as manager:
             fen_queue = manager.Queue()
@@ -134,26 +124,6 @@ def main():
                 fen_queue.put(fen)
 
             processes = []
-
-            # eval_model = deepcopy(model)
-            
-            # eval_proc = mp.Process(
-            #     target=evaluate_model,
-            #     args=(
-            #         monte_carlo_move_function,
-            #         10,
-            #         eval_model,
-            #         optimizer,
-            #         lock,
-            #         device,
-            #         100,
-            #         1,
-            #         i,
-            #         10
-            #         )
-            #     )
-            # eval_proc.start()
-            # processes.append(eval_proc)
 
             for _ in range(num_processes):
                 p = mp.Process(
@@ -177,9 +147,9 @@ def main():
                 p.join()
 
             mean = sum(results) / len(results)
-            print(f"eps: {i}, res mean: {mean}")
+            print(f"eps: {i+100}, res mean: {mean}")
 
-        torch.save(model.state_dict(), f"model_weights{i}.pth")
+        torch.save(model.state_dict(), f"model_weights{i+100}.pth")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

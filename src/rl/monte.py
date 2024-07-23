@@ -1,6 +1,6 @@
 import torch.optim as optim
 import random
-from game import Game
+from gameEnv import Game
 import torch
 import chess
 import gc
@@ -79,6 +79,8 @@ def playout_value(
     if len(game.board.move_stack) == 0 and update:
         record(game, value, model, optimalizer, lock, pos_stack, device)
 
+    gc.collect()
+    torch.cuda.empty_cache()
     return value
 
 def monte_carlo_value(
@@ -95,9 +97,7 @@ def monte_carlo_value(
     res = []
     for _ in range(N):
         res.append(playout_value(game, model, optimalizer, lock, device, [], game_timeout, exploration, update))
-    gc.collect()
-    torch.cuda.empty_cache()
-    return res
+    return sum(res)/len(res)
 
 
 stockfish_path = r"src/rl/stockfish-ubuntu-x86-64-avx2"
