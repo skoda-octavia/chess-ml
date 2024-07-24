@@ -43,7 +43,7 @@ class Game:
         return game
 
     @staticmethod
-    def from_board(board: chess.Board, transform: bool):
+    def from_board(board: chess.Board, transform: bool=False):
         tensor = Game.create_tensor(board, transform)
         game = Game()
         game.board = board

@@ -18,11 +18,13 @@ def worker(
         playouts,
         game_timeout,
         res_queue,
-        move_queue
+        move_queue: mp.Queue
     ):
 
-    while not move_queue.empty():
-        move = move_queue.get()
+        try:
+            move = move_queue.get(timeout=1)
+        except Exception:
+            return
         next_tensor = game.simulate_move(move)
         next_game = Game.from_tensor(next_tensor)
         next_game.board.turn = not game.board.turn
@@ -47,7 +49,7 @@ def get_monte_values(
         device,
         playouts,
         game_timeout,
-        proc_num=32
+        proc_num=28
         ) -> tuple[list[chess.Move], list[float]]:
     
     
@@ -56,7 +58,7 @@ def get_monte_values(
     with mp.Manager() as manager:
         res_queue = manager.Queue()
         move_queue = manager.Queue()
-        lock = mp.RLock()
+        lock = manager.RLock()
         processes = []
 
         for move in legal_moves:
@@ -97,8 +99,9 @@ def main():
     dropout = 0.1
     playouts = 20
     lr = 0.001
-    max_pieces = 20
+    max_pieces = 14
     game_timeout = 50
+    eps = 30
 
 
 
@@ -117,47 +120,51 @@ def main():
 
     fens = []
 
-    local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
-    for local_filename in local_filenames:
-        with open(local_filename, 'r') as file:
-            lines = file.readlines()
-            for line in lines:
-                line = line.strip()
-                if ',' not in line and '-' in line and '/' in line:
-                    board = chess.Board(line)
-                    if len(board.piece_map()) <= max_pieces:
-                        fens.append(line)
+    local_filename = "fens.txt"
+    with open(local_filename, 'r') as file:
+        lines = file.readlines()
+        for line in lines:
+            line = line.strip()
+            if ',' not in line and '-' in line and '/' in line:
+                board = chess.Board(line)
+                if len(board.piece_map()) <= max_pieces:
+                    fens.append(line)
+    print(f"fens in ep: {len(fens)}")
 
-
-    for fen in fens:
-        print(fen)
+    for i in range(eps):
         moves = []
-        board = chess.Board(fen)
-        game = Game.from_board(board, False)
-        print(game.board)
+        for fen in fens:
+            # print(fen)
+            moves = []
+            board = chess.Board(fen)
+            game = Game.from_board(board, False)
+            # print(game.board)
 
-        while not game.board.is_game_over():
+            while not game.board.is_game_over():
 
-            moves_eval = get_monte_values(
-                game,
-                model,
-                optimizer,
-                device,
-                playouts,
-                game_timeout,
-            )
-            if game.board.turn:
-                next_move = max(moves_eval, key=lambda x: x[1])[0]
-            else:
-                next_move = min(moves_eval, key=lambda x: x[1])[0]
-            game.make_move(next_move)
-            moves.append(next_move)
-            print(next_move)
-            print(board)
-        game.over()
-        print(game.score())
-        print(moves)
-        print("---------------------------------------")
+                moves_eval = get_monte_values(
+                    game,
+                    model,
+                    optimizer,
+                    device,
+                    playouts,
+                    game_timeout,
+                )
+                if game.board.turn:
+                    next_move = max(moves_eval, key=lambda x: x[1])[0]
+                else:
+                    next_move = min(moves_eval, key=lambda x: x[1])[0]
+                game.make_move(next_move)
+                moves.append(next_move)
+                # print(next_move)
+                # print(board)
+            game.over()
+            # print(game.score())
+            # print(moves)
+            # print("---------------------------------------")
+            moves.append(len(moves))
+        torch.save(model.state_dict(), f"mwpuzzle/model_weights{i}.pth")
+        print(f"eps {i}, moves_to mate: {sum(moves)/len(moves)}")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)
