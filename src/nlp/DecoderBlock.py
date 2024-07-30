@@ -13,7 +13,7 @@ class DecoderBlock(nn.Module):
         self.dropout = nn.Dropout(drop)
 
     def forward(self, x, value, key, src_mask, tar_mask):
-        attention = self.attention(x, x, x, tar_mask)
+        attention = self.attention(x, x, x, tar_mask, x.shape[0])
         query = self.dropout(self.norm(attention + x))
-        out = self.trans_block(value, key, query)
+        out = self.trans_block(value, key, query, src_mask)
         return out

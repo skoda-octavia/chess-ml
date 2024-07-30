@@ -26,7 +26,9 @@ class Encoder(nn.Module):
     def forward(self, x, mask):
         size, seq_len = x.shape
         position = torch.arange(0, seq_len).expand(size, seq_len).to(self.device)
-        out = self.dropout(self.word_embed(x) + self.pos_embed(position))
+        word_embed = self.word_embed(x)
+        pos_embed = self.pos_embed(position)
+        out = self.dropout(word_embed + pos_embed)
 
         for layer in self.layers:
             out = layer(out, out, out, mask)

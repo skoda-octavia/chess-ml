@@ -17,7 +17,8 @@ class Transformer(nn.Module):
             heads=8,
             drop=0.1,
             device='cuda',
-            max_len=100
+            max_in_len=200,
+            max_out_len=5
             ) -> None:
         super().__init__()
 
@@ -29,7 +30,7 @@ class Transformer(nn.Module):
             device,
             for_exp,
             drop,
-            max_len
+            max_in_len
             )
 
         self.decoder = Decoder(
@@ -40,7 +41,7 @@ class Transformer(nn.Module):
             for_exp,
             drop,
             device,
-            max_len,
+            max_out_len,
         )
         self.src_padd_idx = src_padd_idx
         self.tar_padd_idx = tar_padd_idx
