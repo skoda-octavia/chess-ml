@@ -97,17 +97,18 @@ def train_model(model, dataloader_train, dataloader_val, num_epochs, learning_ra
         acc = 0
         corr = 0
         model.eval()
-        for i, data in enumerate(dataloader_val, 0):
-            src_batch, tar_batch = data
-            src_batch = src_batch.to(device)
-            tar_batch = tar_batch.to(device)
+        with torch.no_grad():
+            for i, data in enumerate(dataloader_val, 0):
+                src_batch, tar_batch = data
+                src_batch = src_batch.to(device)
+                tar_batch = tar_batch.to(device)
 
-            outputs = model(src_batch, tar_batch[:, :-1])
-            temp_acc, temp_corr = evaluate_prediction(outputs, tar_batch[:, 1:], src_batch)
-            acc += temp_acc
-            corr += temp_corr
-            loss = criterion(outputs.reshape(-1, outputs.shape[-1]), tar_batch[:, 1:].reshape(-1))
-            eps_loss_val += loss.item()
+                outputs = model(src_batch, tar_batch[:, :-1])
+                # temp_acc, temp_corr = evaluate_prediction(outputs, tar_batch[:, 1:], src_batch)
+                # acc += temp_acc
+                # corr += temp_corr
+                loss = criterion(outputs.reshape(-1, outputs.shape[-1]), tar_batch[:, 1:].reshape(-1))
+                eps_loss_val += loss.item()
 
         avg_accurate = acc / len(dataloader_val)
         avg_correct = corr / len(dataloader_val)
@@ -129,10 +130,10 @@ with open(vocab_path, "r") as f:
 
 src_vocab_size = len(vocab.items())
 trg_vocab_size = src_vocab_size
-model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx, device=device).to(
+model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx, device=device, embed_size=512, num_layers=10).to(
     device
 )
-# model.load_state_dict(torch.load("models/nlp/transformer2.pth"))
+# model.load_state_dict(torch.load("models/nlp/transformer26.pth"))
 model.to(device)
 
 

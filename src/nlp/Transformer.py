@@ -46,6 +46,8 @@ class Transformer(nn.Module):
         self.src_padd_idx = src_padd_idx
         self.tar_padd_idx = tar_padd_idx
         self.device = device
+        self.fc_out = nn.Linear(embed_size, tar_voc_size)
+        self.soft = nn.Softmax(dim=-1)
 
     def make_src_mask(self, src):
         src_mask = (src != self.src_padd_idx).unsqueeze(1).unsqueeze(2)
@@ -61,5 +63,7 @@ class Transformer(nn.Module):
         tar_mask = self.make_target_mask(tar)
         enc_src = self.encoder(src, src_mask)
         out = self.decoder(tar, enc_src, src_mask, tar_mask)
+        out = self.fc_out(out)
+        log_probs = self.soft(out)
 
-        return out
+        return log_probs

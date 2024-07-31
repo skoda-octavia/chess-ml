@@ -13,7 +13,6 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList(
             [DecoderBlock(embed_size, heads, forw_exp, drop, device) for _ in range(layers)]
         )
-        self.fc_out = nn.Linear(embed_size, tar_vocab_size)
         self.dropout = nn.Dropout(drop)
 
 
@@ -25,5 +24,4 @@ class Decoder(nn.Module):
         for layer in self.layers:
             x = layer(x, enc_out, enc_out, src_mask, tar_mask)
 
-        out = self.fc_out(x)
-        return out
+        return x
