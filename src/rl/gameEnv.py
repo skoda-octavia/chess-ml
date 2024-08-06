@@ -95,11 +95,13 @@ class Game:
         return self.tensor
     
     def points_evaluation(self):
+        overflow_bias = 0.15 # if white/black has 5 queens
         starting_points = 40
         val = 0
         for piece in self.board.piece_map().values():
             val += self.piece_val[piece.symbol()]
-        return 0.5 + (val / starting_points)
+        base_eval = 0.5 + (val / starting_points)
+        return min(max(base_eval, 0 + overflow_bias), 1 - overflow_bias)
 
 
     def over(self, timeout=100):

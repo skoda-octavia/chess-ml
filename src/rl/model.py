@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import os
 
 
 class rl(nn.Module):
@@ -16,7 +17,7 @@ class rl(nn.Module):
             old_size = layer
 
         layers.append(nn.Linear(old_size, output_size))
-        layers.append(nn.ReLU())
+        layers.append(nn.Sigmoid())
         self.model = nn.Sequential(*layers)
         self.criterion = nn.MSELoss()
 
@@ -34,6 +35,7 @@ class rl(nn.Module):
             optimizer.zero_grad()
         del out
         del score
+        # print(f"update model: {id(self)}, pid {os.getpid()}")
 
 
     def predict(self, tensor):
