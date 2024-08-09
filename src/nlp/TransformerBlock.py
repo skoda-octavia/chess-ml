@@ -14,7 +14,7 @@ class TransformerBlock(nn.Module):
             nn.ReLU(),
             nn.Linear(forward_expansion*embed_size, embed_size)
         )
-        self.dropout = nn.Dropout()
+        self.dropout = nn.Dropout(dropout)
 
 
     def forward(self, value, key, query, mask):
