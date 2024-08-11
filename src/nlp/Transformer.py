@@ -11,6 +11,8 @@ class Transformer(nn.Module):
             tar_voc_size,
             src_padd_idx,
             tar_padd_idx,
+            batch_size=32,
+            tar_len=5,
             embed_size=256,
             num_layers=6,
             for_exp=4,
@@ -18,7 +20,7 @@ class Transformer(nn.Module):
             drop=0.1,
             device='cuda',
             max_in_len=200,
-            max_out_len=5
+            max_out_len=5,
             ) -> None:
         super().__init__()
 
@@ -46,23 +48,30 @@ class Transformer(nn.Module):
         self.src_padd_idx = src_padd_idx
         self.tar_padd_idx = tar_padd_idx
         self.device = device
+        self.batch_size = batch_size
         self.fc_out = nn.Linear(embed_size, tar_voc_size)
         self.soft = nn.Softmax(dim=-1)
+        self.att_tar_mask = self.create_tar_attention_mask(batch_size, heads, tar_len)
 
-    def make_src_mask(self, src):
-        src_mask = (src != self.src_padd_idx).unsqueeze(1).unsqueeze(2)
-        return src_mask.to(self.device)
+    def create_src_attention_mask(self, batch_size, tar_seq_len):
+        base_mask = torch.tril(torch.ones(tar_seq_len, tar_seq_len))
+        mask = base_mask.masked_fill(base_mask == 0, float('-inf')).masked_fill(base_mask == 1, float(0.0))
+        mask = mask.unsqueeze(0)
+        mask = mask.repeat(batch_size, 1, 1)
+        return mask
 
-    def make_target_mask(self, tar):
-        size, tar_len = tar.shape
-        tar_mask = torch.tril(torch.ones((tar_len, tar_len))).expand(size, 1, tar_len, tar_len)
-        return tar_mask.to(self.device)
+    def create_tar_attention_mask(self, batch_size, heads_num, tar_seq_len):
+        base_mask = torch.tril(torch.ones(tar_seq_len, tar_seq_len))
+        mask = base_mask.masked_fill(base_mask == 0, float('-inf')).masked_fill(base_mask == 1, float(0.0))
+        mask = mask.unsqueeze(0).unsqueeze(0)
+        mask = mask.repeat(batch_size, heads_num, 1, 1)
+        mask = mask.view(batch_size * heads_num, tar_seq_len, tar_seq_len)
+        return mask
 
     def forward(self, src, tar):
-        src_mask = self.make_src_mask(src)
-        tar_mask = self.make_target_mask(tar)
+        src_mask = self.create_src_attention_mask(src.shape[0], src.shape[1])
         enc_src = self.encoder(src, src_mask)
-        out = self.decoder(tar, enc_src, src_mask, tar_mask)
+        out = self.decoder(tar, enc_src, src_mask, self.att_tar_mask)
         out = self.fc_out(out)
         log_probs = self.soft(out)
 

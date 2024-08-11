@@ -9,6 +9,7 @@ import torch.nn as nn
 import json
 from sklearn.model_selection import train_test_split
 import chess
+from torch.nn.utils.rnn import pad_sequence
 
 
 with open("src/nlp/vocab.json", "r") as f:
@@ -46,8 +47,8 @@ def evaluate_prediction(output, targets, src_batch):
             move += reverse_vocab[third][1].lower()
         for leg_move in board.legal_moves:
             if leg_move == move:
-                correct += 1 
-        
+                correct += 1
+
     return accuracy, correct
 
 
@@ -60,16 +61,23 @@ def load_data(csv_path, test_size=0.2, random_state=42):
     )
     return seq_train, seq_val, tar_train, tar_val
 
-csv_path = 'data/prep/tokenized.csv'
+def collate_fn(self, batch):
+    src_batch, tar_batch = zip(*batch)
+    src_batch = pad_sequence(src_batch, batch_first=True, padding_value=self.src_padd_idx)
+    tar_batch = pad_sequence(tar_batch, batch_first=True, padding_value=self.tar_padd_idx)
+    return src_batch, tar_batch
 
-src_padd_idx = 72
-tar_padd_idx = 72
+csv_path = 'data/prep/tokenized.csv'
+src_padd_idx = -1
+tar_padd_idx = -1
 
 seq_train, seq_val, tar_train, tar_val = load_data(csv_path)
+
 dataset_train = SequenceDataset(seq_train, tar_train, src_padd_idx, tar_padd_idx)
-dataloader_train = DataLoader(dataset_train, batch_size=32, shuffle=True, drop_last=True)
 dataset_val = SequenceDataset(seq_val, tar_val, src_padd_idx, tar_padd_idx)
-dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=True, drop_last=True)
+
+dataloader_train = DataLoader(dataset_train, batch_size=32, shuffle=True, drop_last=True, collate_fn=collate_fn)
+dataloader_val = DataLoader(dataset_val, batch_size=32, shuffle=True, drop_last=True, collate_fn=collate_fn)
 
 def train_model(model, dataloader_train, dataloader_val, num_epochs, learning_rate, device):
 
@@ -122,15 +130,18 @@ num_epochs = 150
 learning_rate = 0.001
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-src_pad_idx = 72
-trg_pad_idx = 72
-vocab_path = "src/nlp/vocab.json"
+src_pad_idx = -1
+trg_pad_idx = -1
+vocab_path = "src/nlp/fen_vocab.json"
+tar_vocab_path = "src/nlp/vocab.json"
 with open(vocab_path, "r") as f:
     vocab = json.load(f)
+with open(tar_vocab_path, "r") as f:
+    tar_vocab = json.load(f)
 
 src_vocab_size = len(vocab.items())
-trg_vocab_size = src_vocab_size
-model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx, device=device, embed_size=512, num_layers=10).to(
+trg_vocab_size = len(tar_vocab.items())
+model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx, device=device, embed_size=512, num_layers=5).to(
     device
 )
 # model.load_state_dict(torch.load("models/nlp/transformer26.pth"))

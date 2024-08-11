@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from TransformerBlock import TransformerBlock
-from Attention import SelfAtt
 
 
 class Encoder(nn.Module):
