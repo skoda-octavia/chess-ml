@@ -45,8 +45,10 @@ def worker(
 
 
 def main():
-    model = rl(6*8*8, 1, [384, 1024, 2048, 4096, 4096, 2048, 1024, 512, 256, 128, 64])
-    # model.load_state_dict(torch.load('model_weights9.pth'))
+    model = rl(6*8*8, 1, [384, 512, 1024, 2048, 4096, 4096, 2048, 1024, 512, 256, 128, 64])
+    load_num = 0
+    if load_num != 0:
+        model.load_state_dict(torch.load(f'models/rlEval/model_weights{5}.pth', weights_only=True))
     model.share_memory()
     
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -58,21 +60,21 @@ def main():
     print(f"device: {device}")
     model = model.to(device)
 
-    url = 'https://wtharvey.com/'
-    filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
-    for local_filename in filenames:
-        temp_url = url + local_filename
-        response = requests.get(temp_url)
-        response.raise_for_status()
+    # url = 'https://wtharvey.com/'
+    # filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
+    # for local_filename in filenames:
+    #     temp_url = url + local_filename
+    #     response = requests.get(temp_url)
+    #     response.raise_for_status()
 
-        with open(local_filename, 'wb') as file:
-            file.write(response.content)
+    #     with open(local_filename, 'wb') as file:
+    #         file.write(response.content)
 
     fens = []
     max_pieces = 40
     eps = 500
     games_played = 30
-    game_timeout = 50
+    game_timeout = 100
     exploration = 1
     num_processes = 18
 
@@ -196,9 +198,9 @@ def main():
                 p.join()
 
             mean = sum(results) / len(results)
-            print(f"eps: {i}, mates found : {mean*100}%")
+            print(f"eps: {load_num+eps+1}, mates found : {mean*100}%")
 
-        torch.save(model.state_dict(), f"models/rlEval/model_weights{i}.pth")
+        torch.save(model.state_dict(), f"models/rlEval/model_weights{load_num+eps+1}.pth")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

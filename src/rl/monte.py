@@ -114,7 +114,7 @@ def monte_carlo_value(
         ):
     res = []
     for _ in range(N):
-        res.append(playout_value(game, model, optimalizer, lock, device, [], game_timeout, exploration, update))
+        res.append(playout_value(game, model, optimalizer, lock, device, [], [], game_timeout, exploration, update))
     return sum(res)/len(res)
 
 

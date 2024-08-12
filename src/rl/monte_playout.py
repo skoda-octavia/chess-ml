@@ -49,7 +49,7 @@ def get_monte_values(
         device,
         playouts,
         game_timeout,
-        proc_num=28
+        proc_num=18
         ) -> tuple[list[chess.Move], list[float]]:
     
     
@@ -97,16 +97,16 @@ def get_monte_values(
 def main():
 
     dropout = 0.1
-    playouts = 20
+    playouts = 30
     lr = 0.001
-    max_pieces = 14
-    game_timeout = 50
-    eps = 30
+    max_pieces = 6
+    game_timeout = 100
+    eps = 300
 
 
 
-    model = rl(6*8*8, 1, [384, 400, 300, 200, 100, 50], dropout)
-    model.load_state_dict(torch.load('model_weights99.pth'))
+    model = rl(6*8*8, 1, [384, 512, 1024, 2048, 4096, 4096, 2048, 1024, 512, 256, 128, 64], dropout)
+    model.load_state_dict(torch.load('models/rlEval/model_weights5.pth', weights_only=True))
     model.share_memory()
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -130,17 +130,20 @@ def main():
                 if len(board.piece_map()) <= max_pieces:
                     fens.append(line)
     print(f"fens in ep: {len(fens)}")
+    puzzle_timeout = 7
 
     for i in range(eps):
         moves = []
+        scores = []
         for fen in fens:
             # print(fen)
             moves = []
             board = chess.Board(fen)
             game = Game.from_board(board, False)
             # print(game.board)
+            cnt = 0
 
-            while not game.board.is_game_over():
+            while cnt != puzzle_timeout and not game.board.is_game_over():
 
                 moves_eval = get_monte_values(
                     game,
@@ -156,15 +159,21 @@ def main():
                     next_move = min(moves_eval, key=lambda x: x[1])[0]
                 game.make_move(next_move)
                 moves.append(next_move)
-                # print(next_move)
-                # print(board)
+                print(next_move)
+                print(board)
+                cnt += 1
             game.over()
-            # print(game.score())
-            # print(moves)
-            # print("---------------------------------------")
-            moves.append(len(moves))
-        torch.save(model.state_dict(), f"mwpuzzle/model_weights{i}.pth")
-        print(f"eps {i}, moves_to mate: {sum(moves)/len(moves)}")
+            try:
+                score = game.score()
+            except Exception:
+                score = 0.5
+            print(score)
+            print(moves)
+            print("---------------------------------------")
+            scores.append(score)
+        mates = [res == 1 or res == 0 for res in scores]
+        torch.save(model.state_dict(), f"models/mwpuzzle/model_weights{i}.pth")
+        print(f"eps {i}, mates : {sum(scores)/len(scores)}")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

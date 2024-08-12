@@ -96,7 +96,7 @@ class Game:
     
     def points_evaluation(self):
         overflow_bias = 0.15 # if white/black has 5 queens
-        starting_points = 40
+        starting_points = 50
         val = 0
         for piece in self.board.piece_map().values():
             val += self.piece_val[piece.symbol()]
@@ -113,9 +113,11 @@ class Game:
         return False if self.outcome is None else True
 
     def score(self):
-        winner = self.outcome.winner
+        self.outcome = self.board.outcome()
+        winner = self.outcome.winner if self.outcome is not None else None
         if winner is None:
             return self.points_evaluation()
+            # return 0.5
         if winner == chess.WHITE:
             return 1
         else:

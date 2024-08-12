@@ -1,6 +1,6 @@
 import chess
 import chess.engine
-from stockfish import Stockfish
+# from stockfish import Stockfish
 import random
 
 stockfish_path = r""
