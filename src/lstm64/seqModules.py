@@ -2,45 +2,6 @@ import torch
 import torch.nn as nn
 import random
 from torch.utils.data import DataLoader, Dataset
-import math
-
-class ChessLoss(nn.Module):
-    def __init__(self, num_classes, weight_legal_moves=0.8):
-        super(ChessLoss, self).__init__()
-        self.penalty = - math.log(1/num_classes)
-        self.weight_legal_moves = weight_legal_moves
-
-    def forward(self, output, target, legal_moves):
-        # Obliczenia dla strat
-        # Zakładamy, że output ma shape (batch_size, seq_len, num_classes)
-        # i target ma shape (batch_size, seq_len)
-        
-        # Zmieniamy shape na (batch_size * seq_len, num_classes)
-        output = output.reshape(-1, output.shape[2])
-        target = target.reshape(-1)
-        
-        # Cross entropy loss
-        loss = nn.CrossEntropyLoss()(output, target)
-        
-        # Obliczanie legalnych ruchów
-        # Zakładamy, że legal_moves ma shape (batch_size, max_legal_moves_len, 2)
-        output_moves = torch.argmax(output, dim=1).reshape(output.shape[0], -1)[:, :2]
-        predictions_expanded = output_moves.unsqueeze(1).expand(output.shape[0], 1, 2)
-        matches = torch.all(predictions_expanded.eq(legal_moves), dim=2)
-        num_legal_moves = torch.sum(matches).item()
-        total_moves = output.shape[0]
-        fraction_of_legal_moves = num_legal_moves / total_moves
-
-        # Obliczanie dokładności
-        # Zakładamy, że target ma shape (batch_size, seq_len)
-        tar_moves = target.reshape(-1, output.shape[1])[:, :2]
-        acc = torch.sum(torch.all(torch.eq(output_moves, tar_moves), dim=1)).item()
-        acc = acc / output.shape[0]
-
-        # Dodanie kar za nielegalne ruchy i modyfikacja straty
-        loss += self.weight_legal_moves * fraction_of_legal_moves
-
-        return loss, fraction_of_legal_moves, acc
 
 
 class SequenceDataset(Dataset):
@@ -89,6 +50,7 @@ class Decoder(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size)
         self.dropout = nn.Dropout(drop)
         self.embed = nn.Embedding(input_size, embed_size, tar_pad)
+        self.acc = nn.ReLU()
 
 
     def forward(self, x, hidden, cell):

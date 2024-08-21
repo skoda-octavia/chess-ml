@@ -1,17 +1,12 @@
 import torch
 import torch.nn as nn
 import json
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
-import pandas as pd
 import random
-from seqModules import Seq2Seq, SequenceDataset, ChessLoss
+from seqModules import Seq2Seq, SequenceDataset
 from utils import (
-    get_samples,
-    translate_data,
-    get_valid_accs,
     load_data,
     find_max_length
     )
@@ -66,12 +61,7 @@ def validate(model: nn.Module, val_dl: DataLoader, criterion, device):
             output = output[1:].reshape(-1, output.shape[2])
             tar_perm = tar_perm[1:].reshape(-1)
 
-            opti.zero_grad()
-            if isinstance(criterion, ChessLoss): 
-                loss = criterion(output, tar_perm, fraction_of_legal_moves)
-            else:
-                loss = criterion(output, tar_perm)
-
+            loss = criterion(output, tar_perm)
             loss_sum += loss.item()
 
         return loss_sum / len(val_dl), legals / len(val_dl), accs / len(val_dl)
@@ -117,10 +107,8 @@ def train(model: Seq2Seq, train_dl: DataLoader, opti, criterion, device):
             tar_perm = tar_perm[1:].reshape(-1)
 
             opti.zero_grad()
-            if isinstance(criterion, ChessLoss): 
-                loss = criterion(output, tar_perm, fraction_of_legal_moves)
-            else:
-                loss = criterion(output, tar_perm)
+            loss = criterion(output, tar_perm)
+
             loss_sum += loss.item()
             loss.backward()
             opti.step()
