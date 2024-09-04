@@ -24,6 +24,23 @@ def print_(str):
           f.write(str+"\n")
 
 
+def accurate(output_acc: torch.Tensor, tar: torch.Tensor):
+    matches = torch.eq(output_acc, tar[:, 1:-1])
+    sequence_matches = torch.all(matches, dim=1)
+    acc = torch.sum(sequence_matches).item() 
+    return acc
+
+
+def cnt_legals(output_moves, legal, batch_size):
+    output_fields = output_moves[:, :2]
+    predictions_expanded = output_fields.unsqueeze(1).expand(batch_size, 1, 2)
+    matches = torch.all(predictions_expanded.eq(legal), dim=2)
+    num_legal_moves = torch.sum(matches).item()
+    total_moves = batch_size
+    fraction_of_legal_moves = num_legal_moves / total_moves
+    return fraction_of_legal_moves
+
+
 def validate(model: nn.Module, val_dl: DataLoader, criterion, device):
 
         loss_sum = 0
@@ -37,30 +54,16 @@ def validate(model: nn.Module, val_dl: DataLoader, criterion, device):
             seq, tar, legal = seq.to(device), tar.to(device), legal.to(device)
             seq = seq.permute(1, 0)
             tar_perm = tar.permute(1, 0)
-
             output = model(seq, tar_perm, 0)
 
-            # get legals ratio 
             output_class = output.permute(1, 0, 2)
             output_moves = torch.argmax(output_class, dim=2)[:, 1:]
-            output_fields = output_moves[:, :2]
-            predictions_expanded = output_fields.unsqueeze(1).expand(batch_size, 1, 2)
-            matches = torch.all(predictions_expanded.eq(legal), dim=2)
-            num_legal_moves = torch.sum(matches).item()
-            total_moves = batch_size
-            fraction_of_legal_moves = num_legal_moves / total_moves
-            legals += fraction_of_legal_moves
-
-            # get acc
             output_acc = output_moves[:, :-1]
-            matches = torch.eq(output_acc, tar[:, 1:-1])
-            sequence_matches = torch.all(matches, dim=1)
-            acc = torch.sum(sequence_matches).item() 
-            accs += acc / batch_size
+            legals += cnt_legals(output_moves, legal, batch_size)
+            accs += accurate(output_acc, tar) / batch_size
 
             output = output[1:].reshape(-1, output.shape[2])
             tar_perm = tar_perm[1:].reshape(-1)
-
             loss = criterion(output, tar_perm)
             loss_sum += loss.item()
 
@@ -84,23 +87,11 @@ def train(model: Seq2Seq, train_dl: DataLoader, opti, criterion, device):
 
             output = model(seq, tar_perm, 1)
 
-            # get legals ratio 
             output_class = output.permute(1, 0, 2)
             output_moves = torch.argmax(output_class, dim=2)[:, 1:]
-            output_fields = output_moves[:, :2]
-            predictions_expanded = output_fields.unsqueeze(1).expand(batch_size, 1, 2)
-            matches = torch.all(predictions_expanded.eq(legal), dim=2)
-            num_legal_moves = torch.sum(matches).item()
-            total_moves = batch_size
-            fraction_of_legal_moves = num_legal_moves / total_moves
-            legals += fraction_of_legal_moves
-
-            # get acc
             output_acc = output_moves[:, :-1]
-            matches = torch.eq(output_acc, tar[:, 1:-1])
-            sequence_matches = torch.all(matches, dim=1)
-            acc = torch.sum(sequence_matches).item() 
-            accs += acc / batch_size
+            legals += cnt_legals(output_moves, legal, batch_size)
+            accs += accurate(output_acc, tar) / batch_size
 
 
             output = output[1:].reshape(-1, output.shape[2])
@@ -151,7 +142,7 @@ tar_vocab_len = tar_pad + 1
 # data params
 batch=512
 num_workers=32
-frac = 0.2
+frac = 0.1
 valid_size = 0.2
 
 seq_train, seq_val, tar_train, tar_val, legals_train, legal_valid = load_data(csv_path, frac=frac, test_size=valid_size)
