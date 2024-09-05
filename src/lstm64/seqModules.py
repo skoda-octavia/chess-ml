@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import random
 from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 
 
 class SequenceDataset(Dataset):
@@ -69,17 +70,42 @@ class Seq2Seq(nn.Module):
         self.decoder = Decoder(tar_vocab_len, embed, hidden, tar_vocab_len, layers, drop, tar_pad)
         self.tar_vocab_len = tar_vocab_len
 
-    def forward(self, seq, tar, teach_force=0.5):
+    def forward(self, seq, tar, teach_force=0.5, mask=None):
         batch_size = seq.shape[1]
         tar_len = tar.shape[0]
         
-        hidden, cell = self.encoder(seq)
+        if mask is not None and batch_size != 1:
+            raise ValueError("Mask was given but batch size was not size 1")
 
+        hidden, cell = self.encoder(seq)
         outputs = torch.zeros(tar_len, batch_size, self.tar_vocab_len).to("cuda")
         x = tar[0]
         for i in range(1, tar_len):
             output, hidden, cell = self.decoder(x, hidden, cell)
+            
+            if mask is not None:
+                output = F.softmax(output, -1)
+                output = self.filter_output(output, mask, i-1)
+                best = output.argmax(1)
+                mask = self.adjust_mask(mask, best, i-1)
+            else:
+                best = output.argmax(1)
+
             outputs[i] = output
-            best = output.argmax(1)
             x = tar[i] if random.random() < teach_force else best
         return outputs
+    
+
+    def filter_output(self, output, mask, idx):
+        output = torch.squeeze(output)
+        move_mask = mask[:, idx, :]
+        max_values, _ = torch.max(move_mask, dim=0)
+        output *= max_values
+        return torch.unsqueeze(output, 0)
+    
+    def adjust_mask(self, mask, best, idx):
+        selected = best[0].item()
+        check = mask[:, idx, selected] == 1
+        mask[~check] = 0
+
+        return mask

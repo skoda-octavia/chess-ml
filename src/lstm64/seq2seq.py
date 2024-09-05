@@ -125,57 +125,58 @@ def fit(model, train_dl, val_dl, eps, opti, criterion, device):
         torch.save(model.state_dict(), f"transformer{i}.pth")
         torch.save(opti.state_dict(), f"opti{i}.pth")
 
-vocab_path = "src/lstm64/vocab_src.json"
-tar_vocab_path = "src/lstm64/vocab_tar.json"
-with open(vocab_path, "r") as f:
-    vocab = json.load(f)
-with open(tar_vocab_path, "r") as f:
-    tar_vocab = json.load(f)
+if __name__ == "__main__":
+    vocab_path = "src/lstm64/vocab_src.json"
+    tar_vocab_path = "src/lstm64/vocab_tar.json"
+    with open(vocab_path, "r") as f:
+        vocab = json.load(f)
+    with open(tar_vocab_path, "r") as f:
+        tar_vocab = json.load(f)
 
-csv_path = 'data/prep/tokenized64.csv'
-src_pad = len(vocab)
-tar_pad = len(tar_vocab)
+    csv_path = 'data/prep/tokenized64.csv'
+    src_pad = len(vocab)
+    tar_pad = len(tar_vocab)
 
-src_vocab_len = src_pad + 1
-tar_vocab_len = tar_pad + 1
+    src_vocab_len = src_pad + 1
+    tar_vocab_len = tar_pad + 1
 
-# data params
-batch=512
-num_workers=32
-frac = 0.1
-valid_size = 0.2
+    # data params
+    batch=512
+    num_workers=32
+    frac = 0.1
+    valid_size = 0.2
 
-seq_train, seq_val, tar_train, tar_val, legals_train, legal_valid = load_data(csv_path, frac=frac, test_size=valid_size)
+    seq_train, seq_val, tar_train, tar_val, legals_train, legal_valid = load_data(csv_path, frac=frac, test_size=valid_size)
 
-max_src_len = max(find_max_length(seq_train), find_max_length(seq_val))
-max_tar_len = max(find_max_length(tar_train), find_max_length(tar_val))
+    max_src_len = max(find_max_length(seq_train), find_max_length(seq_val))
+    max_tar_len = max(find_max_length(tar_train), find_max_length(tar_val))
 
-dataset_train = SequenceDataset(seq_train, tar_train, legals_train, src_pad, tar_pad, max_src_len, max_tar_len)
-dataset_val = SequenceDataset(seq_val, tar_val, legal_valid, src_pad, tar_pad, max_src_len, max_tar_len)
+    dataset_train = SequenceDataset(seq_train, tar_train, legals_train, src_pad, tar_pad, max_src_len, max_tar_len)
+    dataset_val = SequenceDataset(seq_val, tar_val, legal_valid, src_pad, tar_pad, max_src_len, max_tar_len)
 
-dataloader_train = DataLoader(dataset_train, batch_size=batch, shuffle=True, drop_last=True, num_workers=num_workers)
-dataloader_val = DataLoader(dataset_val, batch_size=batch, shuffle=True, drop_last=True, num_workers=num_workers)
+    dataloader_train = DataLoader(dataset_train, batch_size=batch, shuffle=True, drop_last=True, num_workers=num_workers)
+    dataloader_val = DataLoader(dataset_val, batch_size=batch, shuffle=True, drop_last=True, num_workers=num_workers)
 
-print_(f"train len: {len(dataloader_train)}")
-print_(f"val len: {len(dataloader_val)}\n")
+    print_(f"train len: {len(dataloader_train)}")
+    print_(f"val len: {len(dataloader_val)}\n")
 
-# train params
-eps= 60
-lr = 0.001
-device = torch.device("cuda")
-embed = 512
-hidden = 512
-layers = 4
-drop = 0.2
+    # train params
+    eps= 60
+    lr = 0.001
+    device = torch.device("cuda")
+    embed = 512
+    hidden = 512
+    layers = 4
+    drop = 0.2
 
-# acc validation params
-samples = 10240
+    # acc validation params
+    samples = 10240
 
-model = Seq2Seq(src_vocab_len, tar_vocab_len, embed, hidden, layers, drop, src_pad, tar_pad).to(device)
+    model = Seq2Seq(src_vocab_len, tar_vocab_len, embed, hidden, layers, drop, src_pad, tar_pad).to(device)
 
-# criterion = ChessLoss(tar_pad, tar_vocab_len, 1.5)
-criterion = nn.CrossEntropyLoss(ignore_index=tar_pad)
+    # criterion = ChessLoss(tar_pad, tar_vocab_len, 1.5)
+    criterion = nn.CrossEntropyLoss(ignore_index=tar_pad)
 
-opti = optim.Adam(model.parameters(), lr=lr)
+    opti = optim.Adam(model.parameters(), lr=lr)
 
-fit(model, dataloader_train, dataloader_val, eps, opti, criterion, device)
+    fit(model, dataloader_train, dataloader_val, eps, opti, criterion, device)
