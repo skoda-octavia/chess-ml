@@ -3,6 +3,8 @@ import torch
 
 class Game:
 
+    board: chess.Board = None
+
     layer_to_piece = {
         1: chess.Piece(chess.PAWN, chess.WHITE),
         2: chess.Piece(chess.KNIGHT, chess.WHITE),
@@ -90,23 +92,36 @@ class Game:
                     square = chess.square(col_idx, 7 - row_idx)
                     board.set_piece_at(square, piece)
         return board
+    
+    @staticmethod
+    def mask_mates(heus, next_boards: list[chess.Board]):
+        for idx, board in enumerate(next_boards):
+            outcome = board.outcome()
+            winner = outcome.winner if outcome is not None else None
+            if winner is None:
+                continue
+            if winner == chess.WHITE:
+                heus[idx, 0] = 1
+            else:
+                heus[idx, 0] = 0
+        return heus
+
 
     def state(self):
         return self.tensor
     
     def points_evaluation(self):
-        overflow_bias = 0.15 # if white/black has 5 queens
-        starting_points = 50
+        starting_points = 60
         val = 0
         for piece in self.board.piece_map().values():
             val += self.piece_val[piece.symbol()]
-        base_eval = 0.5 + (val / starting_points)
-        return min(max(base_eval, 0 + overflow_bias), 1 - overflow_bias)
+        return 0.5 + (val / starting_points)
+
 
 
     def over(self, timeout=100):
         self.outcome = self.board.outcome()
-        if self.outcome is None and len(self.board.move_stack) == timeout:
+        if self.outcome is None and len(self.board.move_stack) >= timeout:
             self.outcome = chess.Outcome(chess.Termination.SEVENTYFIVE_MOVES, None)
             return True
 
@@ -127,9 +142,9 @@ class Game:
         return self.board.legal_moves
 
     def make_move(self, move):
-        new_tensor = self.simulate_move(move)
-        self.tensor = new_tensor
-        self.board.push(move)
+        new_game = self.simulate_move(move)
+        return new_game
+        
         # try:
         #     self.equal_boards()
         # except Exception:
@@ -152,10 +167,13 @@ class Game:
                 assert piece_tensor == piece_board
 
     def simulate_move(self, move: chess.Move):
+        new_board = self.board.copy()
+        new_board.push(move)
+        new_game = Game()
         if self.board.is_en_passant(move) or self.board.is_castling(move):
-            new_board = self.board.copy()
-            new_board.push(move)
-            return Game.create_tensor(new_board)
+            new_game.board = new_board
+            new_game.tensor = Game.create_tensor(new_board)
+            return new_game
         new_tensor = self.tensor.clone()
         idx_beg = self.board.piece_at(move.from_square).piece_type - 1
         idx_end = idx_beg if move.promotion is None else int(move.promotion) - 1
@@ -168,7 +186,9 @@ class Game:
             new_tensor[i][rank_end][file_end] = torch.tensor(0)
         new_tensor[idx_beg][rank_beg][file_beg] = torch.tensor(0)
         new_tensor[idx_end][rank_end][file_end] = torch.tensor(value)
-        return new_tensor
+        new_game.tensor = new_tensor
+        new_game.board = new_board
+        return new_game
 
     def copy(self):
         copy = self.__class__.__new__(self.__class__)

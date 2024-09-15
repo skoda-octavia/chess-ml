@@ -7,20 +7,9 @@ import gc
 # from stockfish import Stockfish
 
 
-def record(score, model, optimalizer, lock, pos_stack: list, device, evals):
-    winning_bias = 0.3
+def record(score, model, optimalizer, lock, pos_stack: list, device):
     positions = torch.stack(pos_stack)
-    score = max(min(score, 1), 0)
-    if score == 0:
-        evals.append(0.5 - winning_bias)
-        starting_val = min(evals)
-        scores = torch.linspace(starting_val, 0, len(pos_stack))
-    elif score == 1:
-        evals.append(0.5 + winning_bias)
-        starting_val = max(evals)
-        scores = torch.linspace(starting_val, 1, len(pos_stack))
-    else:
-        scores = torch.full((len(positions),), score)
+    scores = torch.full((len(positions),), score)
     scores = scores.float()
     scores, positions = scores.to(device), positions.to(device)
     model.fit(positions, scores, optimalizer, lock)
@@ -35,10 +24,10 @@ def get_move(heus_gpu: torch.Tensor, moves: list[chess.Move], white_moves, to_co
     del heus_gpu
     if to_consider == 1 and white_moves:
         best = torch.argmax(heus).item()
-        return moves[best], torch.max(heus).item()
+        return best, moves[best], torch.max(heus).item()
     elif to_consider == 1 and not white_moves:
         best = torch.argmin(heus).item()
-        return moves[best], torch.min(heus).item()
+        return best, moves[best], torch.min(heus).item()
     const_bias = 0.05
     heus = torch.squeeze(heus)
     if len(moves) == 1:
@@ -55,7 +44,7 @@ def get_move(heus_gpu: torch.Tensor, moves: list[chess.Move], white_moves, to_co
 
     chosen_index = torch.multinomial(probabilities, 1)
     selected_index = topk_indices[chosen_index]
-    return moves[selected_index.item()], heus[selected_index.item()]
+    return selected_index, moves[selected_index.item()], heus[selected_index.item()]
 
 
 def playout_value(
@@ -79,23 +68,28 @@ def playout_value(
 
     next_states = []
     moves = []
+    next_boards = []
+    
     for move in game.valid_moves():
         moves.append(move)
-        tempTensor = game.simulate_move(move)
-        next_states.append(tempTensor)
+        tempGame = game.simulate_move(move)
+        next_states.append(tempGame.tensor)
+        next_boards.append(tempGame.board)
 
     final = torch.stack(next_states).to(device)
     heus = model.predict(final)
+    heus = Game.mask_mates(heus, next_boards)
     del final
-    move, eval = get_move(heus, moves, game.board.turn, exploration)
+    best_idx, move, eval = get_move(heus, moves, game.board.turn, exploration)
     evals.append(eval)
     del heus
-    next_game = game.copy()
-    next_game.make_move(move)
+    next_game = Game()
+    next_game.board = next_boards[best_idx]
+    next_game.tensor = next_states[best_idx]
 
     value = playout_value(next_game, model, optimalizer, lock, device, pos_stack, evals, game_timeout, exploration)
     if len(game.board.move_stack) == 0 and update:
-        record(value, model, optimalizer, lock, pos_stack, device, evals)
+        record(value, model, optimalizer, lock, pos_stack, device)
 
     gc.collect()
     torch.cuda.empty_cache()
@@ -190,8 +184,7 @@ def monte_carlo_move_function(
     legal_moves = list(game.board.legal_moves)
     values = []
     for move in legal_moves:
-        temp_game = game.copy()
-        temp_game.make_move(move)
+        temp_game = game.simulate_move(move)
         results = monte_carlo_value(
             temp_game,
             games_played,

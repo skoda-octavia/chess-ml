@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.multiprocessing as mp
 import chess
-from game import Game
+from gameEnv import Game
 from monte import monte_carlo_value, playout_value
 import requests
 from model import rl
@@ -24,7 +24,9 @@ def worker(
     ):
     while not fen_queue.empty():
         fen = fen_queue.get()
-        # print(f"{fen_queue.qsize()} remain")
+        size = fen_queue.qsize()
+        if size % 100 == 0:
+            print(f"{size} remain")
         transform = False
         try:
             board = chess.Board(fen)
@@ -45,10 +47,11 @@ def worker(
 
 
 def main():
-    model = rl(6*8*8, 1, [384, 512, 1024, 2048, 4096, 4096, 2048, 1024, 512, 256, 128, 64])
-    load_num = 0
+    model = rl(6*8*8, 1, [384, 400, 500, 500, 400, 300, 200, 100, 64])
+    load_num = 8
     if load_num != 0:
-        model.load_state_dict(torch.load(f'models/rlEval/model_weights{5}.pth', weights_only=True))
+        print(f"loading model model_weights{load_num}.pth")
+        model.load_state_dict(torch.load(f'models/rlEval/model_weights{load_num}.pth', weights_only=True))
     model.share_memory()
     
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -60,23 +63,23 @@ def main():
     print(f"device: {device}")
     model = model.to(device)
 
-    # url = 'https://wtharvey.com/'
-    # filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
-    # for local_filename in filenames:
-    #     temp_url = url + local_filename
-    #     response = requests.get(temp_url)
-    #     response.raise_for_status()
+    url = 'https://wtharvey.com/'
+    filenames = ['m8n2.txt', 'm8n3.txt', 'm8n4.txt']
+    for local_filename in filenames:
+        temp_url = url + local_filename
+        response = requests.get(temp_url)
+        response.raise_for_status()
 
-    #     with open(local_filename, 'wb') as file:
-    #         file.write(response.content)
+        with open(local_filename, 'wb') as file:
+            file.write(response.content)
 
     fens = []
-    max_pieces = 40
+    max_pieces = 15
     eps = 500
-    games_played = 30
+    games_played = 15
     game_timeout = 100
     exploration = 1
-    num_processes = 18
+    num_processes = 32
 
     local_filenames = ["m8n2.txt", "m8n3.txt", "m8n4.txt"]
     white_cnt = 0
@@ -198,9 +201,9 @@ def main():
                 p.join()
 
             mean = sum(results) / len(results)
-            print(f"eps: {load_num+eps+1}, mates found : {mean*100}%")
+            print(f"eps: {load_num+i+1}, mates found : {mean*100}%")
 
-        torch.save(model.state_dict(), f"models/rlEval/model_weights{load_num+eps+1}.pth")
+        torch.save(model.state_dict(), f"models/rlEval/model_weights{load_num+i+1}.pth")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

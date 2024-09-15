@@ -8,6 +8,11 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 
 
+def print_(str, filename):
+    with open(filename, "a") as f:
+        f.write(str+"\n")
+
+
 def worker(
         game: Game,
         move: chess.Move,
@@ -49,7 +54,7 @@ def get_monte_values(
         device,
         playouts,
         game_timeout,
-        proc_num=18
+        proc_num=32
         ) -> tuple[list[chess.Move], list[float]]:
     
     
@@ -97,16 +102,20 @@ def get_monte_values(
 def main():
 
     dropout = 0.1
-    playouts = 30
+    playouts = 50
     lr = 0.001
-    max_pieces = 6
+    max_pieces = 15
     game_timeout = 100
     eps = 300
+    load_num = 8
+    puzzle_timeout = 10
 
+    model = rl(6*8*8, 1, [384, 400, 500, 500, 400, 300, 200, 100, 64], dropout)
 
-
-    model = rl(6*8*8, 1, [384, 512, 1024, 2048, 4096, 4096, 2048, 1024, 512, 256, 128, 64], dropout)
-    model.load_state_dict(torch.load('models/rlEval/model_weights5.pth', weights_only=True))
+    if load_num != 0:
+        model_name = f'models/rlEval/model_weights{load_num}.pth'
+        print(f"loading model: {model_name}")
+        model.load_state_dict(torch.load(model_name, weights_only=True))
     model.share_memory()
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -120,6 +129,8 @@ def main():
 
     fens = []
 
+    white_cnt = 0
+    bl_cnt = 0
     local_filename = "fens.txt"
     with open(local_filename, 'r') as file:
         lines = file.readlines()
@@ -129,18 +140,24 @@ def main():
                 board = chess.Board(line)
                 if len(board.piece_map()) <= max_pieces:
                     fens.append(line)
+                    if board.turn:
+                        white_cnt += 1
+                    else:
+                        bl_cnt += 1
+    
     print(f"fens in ep: {len(fens)}")
-    puzzle_timeout = 7
+    print(f"white puzzles: {white_cnt}")
+    print(f"black puzzles: {bl_cnt}")
 
     for i in range(eps):
-        moves = []
         scores = []
-        for fen in fens:
+        for idx, fen in enumerate(fens):
             # print(fen)
             moves = []
+            print_(fen, "playout_rap.txt")
             board = chess.Board(fen)
             game = Game.from_board(board, False)
-            # print(game.board)
+            print(game.board)
             cnt = 0
 
             while cnt != puzzle_timeout and not game.board.is_game_over():
@@ -157,23 +174,22 @@ def main():
                     next_move = max(moves_eval, key=lambda x: x[1])[0]
                 else:
                     next_move = min(moves_eval, key=lambda x: x[1])[0]
-                game.make_move(next_move)
+                game = game.make_move(next_move)
                 moves.append(next_move)
                 print(next_move)
                 print(board)
                 cnt += 1
             game.over()
-            try:
-                score = game.score()
-            except Exception:
-                score = 0.5
+            score = game.score()
             print(score)
             print(moves)
+            print_(str(moves), "playout_rap.txt")
             print("---------------------------------------")
+            print_("---------------------------------------", "playout_rap.txt")
             scores.append(score)
-        mates = [res == 1 or res == 0 for res in scores]
-        torch.save(model.state_dict(), f"models/mwpuzzle/model_weights{i}.pth")
-        print(f"eps {i}, mates : {sum(scores)/len(scores)}")
+            torch.save(model.state_dict(), f"models/playoutTrain/model_weights_{i}_{idx}.pth")
+        print_(f"eps {i}")
+        print(f"eps {i}")
 
 if __name__ == '__main__':
     mp.set_start_method('forkserver', force=True)

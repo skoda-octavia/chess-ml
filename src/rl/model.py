@@ -29,6 +29,10 @@ class rl(nn.Module):
         out = self.forward(tensor)
         out = torch.squeeze(out)
         loss = self.criterion(out, score)
+        # print("opti: ", id(optimizer))
+        # print("model: ", id(self))
+        # print("sc: ", score)
+
         with lock:
             loss.backward()
             optimizer.step()
