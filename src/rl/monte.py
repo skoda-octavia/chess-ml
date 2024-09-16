@@ -58,6 +58,7 @@ def playout_value(
         game_timeout,
         exploration,
         update = True,
+        level = 0
     ):
     pos_stack.append(game.tensor)
     if game.over(game_timeout):
@@ -87,8 +88,8 @@ def playout_value(
     next_game.board = next_boards[best_idx]
     next_game.tensor = next_states[best_idx]
 
-    value = playout_value(next_game, model, optimalizer, lock, device, pos_stack, evals, game_timeout, exploration)
-    if len(game.board.move_stack) == 0 and update:
+    value = playout_value(next_game, model, optimalizer, lock, device, pos_stack, evals, game_timeout, exploration, level=level+1)
+    if level == 0 and update:
         record(value, model, optimalizer, lock, pos_stack, device)
 
     gc.collect()

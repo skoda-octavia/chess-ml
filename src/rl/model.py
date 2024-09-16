@@ -29,9 +29,6 @@ class rl(nn.Module):
         out = self.forward(tensor)
         out = torch.squeeze(out)
         loss = self.criterion(out, score)
-        # print("opti: ", id(optimizer))
-        # print("model: ", id(self))
-        # print("sc: ", score)
 
         with lock:
             loss.backward()
@@ -39,7 +36,6 @@ class rl(nn.Module):
             optimizer.zero_grad()
         del out
         del score
-        # print(f"update model: {id(self)}, pid {os.getpid()}")
 
 
     def predict(self, tensor):

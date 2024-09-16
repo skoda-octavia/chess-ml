@@ -131,8 +131,8 @@ class Game:
         self.outcome = self.board.outcome()
         winner = self.outcome.winner if self.outcome is not None else None
         if winner is None:
-            return self.points_evaluation()
-            # return 0.5
+            # return self.points_evaluation()
+            return 0.5
         if winner == chess.WHITE:
             return 1
         else:

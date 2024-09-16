@@ -25,27 +25,26 @@ def worker(
         res_queue,
         move_queue: mp.Queue
     ):
-
-        try:
-            move = move_queue.get(timeout=1)
-        except Exception:
-            return
-        next_tensor = game.simulate_move(move)
-        next_game = Game.from_tensor(next_tensor)
-        next_game.board.turn = not game.board.turn
-        res = monte_carlo_value(
-            next_game,
-            playouts,
-            model,
-            optimizer,
-            lock,
-            device,
-            game_timeout,
-            1,
-            True
-        )
-        eval = move, res
-        res_queue.put(eval)
+        while not move_queue.empty():
+            try:
+                move = move_queue.get(timeout=1)
+            except Exception:
+                return
+            # print(move_queue.qsize(), move)
+            next_game = game.simulate_move(move)
+            res = monte_carlo_value(
+                next_game,
+                playouts,
+                model,
+                optimizer,
+                lock,
+                device,
+                game_timeout,
+                1,
+                True
+            )
+            eval = move, res
+            res_queue.put(eval)
 
 def get_monte_values(
         game: Game,
@@ -68,6 +67,8 @@ def get_monte_values(
 
         for move in legal_moves:
             move_queue.put(move)
+
+        # print(move_queue.qsize())
 
         for _ in range(proc_num):
             p = mp.Process(
@@ -101,10 +102,10 @@ def get_monte_values(
 
 def main():
 
-    dropout = 0.1
-    playouts = 50
+    dropout = 0.05
+    playouts = 30
     lr = 0.001
-    max_pieces = 15
+    max_pieces = 50
     game_timeout = 100
     eps = 300
     load_num = 8
@@ -116,9 +117,11 @@ def main():
         model_name = f'models/rlEval/model_weights{load_num}.pth'
         print(f"loading model: {model_name}")
         model.load_state_dict(torch.load(model_name, weights_only=True))
+    else:
+        print("new weights")
     model.share_memory()
     
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.SGD(model.parameters(), lr=lr)
 
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -175,13 +178,14 @@ def main():
                 else:
                     next_move = min(moves_eval, key=lambda x: x[1])[0]
                 game = game.make_move(next_move)
+                board = game.board
                 moves.append(next_move)
                 print(next_move)
                 print(board)
                 cnt += 1
             game.over()
             score = game.score()
-            print(score)
+            print_(score)
             print(moves)
             print_(str(moves), "playout_rap.txt")
             print("---------------------------------------")
