@@ -7,13 +7,13 @@ class Heu(nn.Module):
     def __init__(self, input_size: int, output_size: int, layer_sizes: list[int], dropout: float=0.1):
         super(Heu, self).__init__()
         layers = []
-        flat = nn.Flatten(start_dim=1)
-        layers.append(flat)
+        # flat = nn.Flatten(start_dim=1)
+        # layers.append(flat)
         old_size = input_size
         for layer in layer_sizes:
             layers.append(nn.Linear(old_size, layer))
             layers.append(nn.BatchNorm1d(layer))
-            layers.append(nn.ReLU())
+            layers.append(nn.Sigmoid())
             layers.append(nn.Dropout(dropout))
             old_size = layer
 
