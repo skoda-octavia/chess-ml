@@ -3,3 +3,4 @@ __pychache__/
 
 # files with prepared data to large for git
 *.pt 
+data/raw
