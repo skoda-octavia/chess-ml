@@ -103,15 +103,15 @@ def get_monte_values(
 def main():
 
     dropout = 0.05
-    playouts = 30
-    lr = 0.001
+    playouts = 3
+    lr = 0.0002
     max_pieces = 50
-    game_timeout = 100
+    game_timeout = 70
     eps = 300
-    load_num = 8
-    puzzle_timeout = 10
+    load_num = 0
+    puzzle_timeout = 8
 
-    model = rl(6*8*8, 1, [384, 400, 500, 500, 400, 300, 200, 100, 64], dropout)
+    model = rl(6*8*8, 1, [384, 400, 500, 700, 700, 700, 500, 300, 200, 100, 64], dropout)
 
     if load_num != 0:
         model_name = f'models/rlEval/model_weights{load_num}.pth'
@@ -121,7 +121,7 @@ def main():
         print("new weights")
     model.share_memory()
     
-    optimizer = optim.SGD(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
 
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -185,13 +185,14 @@ def main():
                 cnt += 1
             game.over()
             score = game.score()
-            print_(score)
+            print_(str(score), "playout_rap.txt")
             print(moves)
             print_(str(moves), "playout_rap.txt")
             print("---------------------------------------")
             print_("---------------------------------------", "playout_rap.txt")
             scores.append(score)
-            torch.save(model.state_dict(), f"models/playoutTrain/model_weights_{i}_{idx}.pth")
+            if idx % 20 == 0:
+                torch.save(model.state_dict(), f"models/playoutTrain/model_weights_{i}_{idx}.pth")
         print_(f"eps {i}")
         print(f"eps {i}")
 
