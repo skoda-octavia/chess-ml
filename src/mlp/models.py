@@ -13,12 +13,12 @@ class MLP(nn.Module):
         for layer in layer_sizes:
             layers.append(nn.Linear(old_size, layer))
             layers.append(nn.BatchNorm1d(layer))
-            layers.append(nn.ReLU())
+            layers.append(nn.Tanh())
             layers.append(nn.Dropout(dropout))
             old_size = layer
 
         layers.append(nn.Linear(old_size, output_size))
-        layers.append(nn.Sigmoid())
+        layers.append(nn.Softmax(dim=-1))
         self.model = nn.Sequential(*layers)
 
     def forward(self, x):
