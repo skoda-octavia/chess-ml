@@ -7,8 +7,6 @@ class Heu(nn.Module):
     def __init__(self, input_size: int, output_size: int, layer_sizes: list[int], dropout: float=0.1):
         super(Heu, self).__init__()
         layers = []
-        # flat = nn.Flatten(start_dim=1)
-        # layers.append(flat)
         old_size = input_size
         for layer in layer_sizes:
             layers.append(nn.Linear(old_size, layer))
@@ -48,7 +46,7 @@ class GaussianCrossEntropyLoss(nn.Module):
     def hl_gauss(self, values):
         bin_centers = torch.arange(self.num_bins, dtype=torch.float32, device=values.device)
         gauss_distrib = torch.exp(-0.5 * ((bin_centers[None, :] - values[:, None]) / self.sigma) ** 2)
-        gauss_distrib = gauss_distrib / gauss_distrib.sum(dim=-1, keepdim=True)
+        # gauss_distrib = gauss_distrib / gauss_distrib.sum(dim=-1, keepdim=True)
         return gauss_distrib
 
     def forward(self, predictions, labels):
