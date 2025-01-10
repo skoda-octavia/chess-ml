@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models import Heu, MyDataset, GaussianCrossEntropyLoss 
+from src.heu.models import Heu, MyDataset, GaussianCrossEntropyLoss 
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
-def print_(str):
+def print_(str: str):
     print(str)
     with open("heu_train.txt", "a") as f:
         f.write(str+"\n")
@@ -17,25 +16,25 @@ def val_ep(
         model: nn.Module,
         val_dl: DataLoader,
         criterion: nn.Module,
-        device: torch.device,
-        ep = 0,):
+        device: torch.device,):
 
     val_losses = []
+    correct_predictions = 0
 
     model.eval()
     for i, batch in enumerate(val_dl):
         inputs, labels = batch
         inputs, labels=  inputs.to(device), labels.to(device)
         out = model(inputs)
+        # out = torch.squeeze(out)
         out = F.softmax(out, -1)
         loss = criterion(out, labels)
         val_losses.append(loss.item())
 
-    torch.save(model.state_dict(), weights_path + f"stock/model_weights_{ep}.pth")
-    torch.save(optimizer.state_dict(), weights_path + f"stock/opti_.pth")
+        predicted_classes = torch.argmax(out, dim=-1)
+        correct_predictions += (predicted_classes == labels).sum().item()
 
-
-    return sum(val_losses) / len(val_losses)
+    return sum(val_losses) / len(val_losses), correct_predictions / (len(val_losses) * inputs.shape[0])
 
 
 def train_ep(
@@ -54,6 +53,7 @@ def train_ep(
         inputs, labels = batch
         inputs, labels=  inputs.to(device), labels.to(device)
         out = model(inputs)
+        # out = torch.squeeze(out)
         out = F.softmax(out, -1)
         loss = criterion(out, labels)
         loss.backward()
@@ -68,26 +68,18 @@ def train_ep(
 if __name__ == "__main__":
 
     load_num = 0
-    eps = 1200
-    batch_size = 1024
-    leraning_rate = 0.002
+    eps = 300
+    batch_size = 4096
+    leraning_rate = 0.001
     dropout = 0
-    bins = 128
+    bin_num = 64
+    files_num = 8
+    eval_dataset_num = 9
 
+    plt_path = "plots/"
     data_path = "data/prep/"
-    files = [
-        ("X_turn_stock_0102.pt", "y_turn_stock_0102.pt"),
-        ("X_turn_stock_0304.pt", "y_turn_stock_0304.pt"),
-        ("X_turn_stock_0506.pt", "y_turn_stock_0506.pt"),
-        ("X_turn_stock_0708.pt", "y_turn_stock_0708.pt"),
-        ("X_turn_stock_0910.pt", "y_turn_stock_0910.pt"),
-        ("X_turn_stock_1112.pt", "y_turn_stock_1112.pt"),
-        ("X_turn_stock_1314.pt", "y_turn_stock_1314.pt"),
-        ("X_turn_stock_1516.pt", "y_turn_stock_1516.pt"),
-        ]
+    files = [(f"X_{i}.pt", f"y_{i}.pt") for i in range(files_num+1)]
 
-    # for idx, layers in enumerate(model_weights):
-    plt_path = f"plots/train_turn.png"
     weights_path = f"models/heus/"
 
     if torch.cuda.is_available():
@@ -100,10 +92,9 @@ if __name__ == "__main__":
     torch.backends.cudnn.determinstic = True
     torch.backends.cudnn.benchmark = False
 
-    # print_(f"train len: {len(train_loader)}, val len: {len(val_loader)}, data_len: {len(y)}")
-    model = Heu(6*8*8 + 1, bins, [384 + 1, 500, 800, 1000, 1000, 1000, 1000, 800, 600, 400, 200], dropout)
+    model = Heu(6*8*8 + 1, bin_num, [384 + 1, 500, 800, 1000, 1000, 1000, 1000, 800, 600, 400, 200, 128], dropout)
     model.to(device)
-    criterion = GaussianCrossEntropyLoss(num_bins=bins, sigma=1)
+    criterion = GaussianCrossEntropyLoss(bin_num, 0.6)
     optimizer = optim.Adam(model.parameters(), lr=leraning_rate)
     train_losses = []
     val_losses = []
@@ -113,8 +104,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(weights_path + f"stock/model_weights_{load_num}.pth", weights_only=True))        
         optimizer.load_state_dict(torch.load(weights_path + f"stock/opti_.pth", weights_only=True))
 
-
-    for i in range(eps + 1):
+    for i in range(load_num + 1, eps + 1, 1):
         temp_train_loss = []
         for x_file, y_file in files:
             X = torch.load(data_path + x_file, weights_only=True)
@@ -128,25 +118,28 @@ if __name__ == "__main__":
                 optimizer,
                 device)
             temp_train_loss.append(train_loss)
+            print_(str(train_loss))
             del X, y, dataset, loader
         
         
         train_losses.append(sum(temp_train_loss)/len(temp_train_loss))
         
-        X = torch.load(data_path + "X_turn_stock_17.pt", weights_only=True)
-        y = torch.load(data_path + "y_turn_stock_17.pt", weights_only=True)
+        X = torch.load(data_path + f"X_{eval_dataset_num}.pt", weights_only=True)
+        y = torch.load(data_path + f"y_{eval_dataset_num}.pt", weights_only=True)
         dataset = TensorDataset(X, y)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True)
-        val_loss = val_ep(
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True, num_workers=32)
+        val_loss, val_acc = val_ep(
             model,
             loader,
             criterion,
-            device,
-            i,)
+            device,)
         val_losses.append(val_loss)
         del X, y, dataset, loader
         
-        print_(f'Epoch [{i}/{eps}], train_loss: {train_losses[-1]:4f}, test_loss: {val_losses[-1]:4f}')
+        torch.save(model.state_dict(), weights_path + f"stock/model_weights_{i}.pth")
+        torch.save(optimizer.state_dict(), weights_path + f"stock/opti_.pth")
+        
+        print_(f'Epoch [{i}/{eps}], train_loss: {train_losses[-1]:4f}, test_loss: {val_losses[-1]:4f}, val_acc: {val_acc:4f}')
         
     plt.plot(steps_list, train_losses, label='train_loss')
     plt.plot(steps_list, val_losses, label='val_loss')

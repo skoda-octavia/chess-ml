@@ -3,5 +3,6 @@ __pychache__/
 
 # files with prepared data to large for git
 *.pt 
-data/
+data/raw/*
+data/prep/*
 models/
