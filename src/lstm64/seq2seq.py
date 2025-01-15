@@ -27,7 +27,9 @@ def print_(str):
 def accurate(output_acc: torch.Tensor, tar: torch.Tensor):
     matches = torch.eq(output_acc, tar[:, 1:-1])
     sequence_matches = torch.all(matches, dim=1)
-    acc = torch.sum(sequence_matches).item() 
+    acc = torch.sum(sequence_matches).item()
+    del matches
+    del sequence_matches
     return acc
 
 
@@ -38,6 +40,9 @@ def cnt_legals(output_moves, legal, batch_size):
     num_legal_moves = torch.sum(matches).item()
     total_moves = batch_size
     fraction_of_legal_moves = num_legal_moves / total_moves
+    del output_fields
+    del predictions_expanded
+    del matches
     return fraction_of_legal_moves
 
 
@@ -67,6 +72,11 @@ def validate(model: nn.Module, val_dl: DataLoader, criterion, device):
             loss = criterion(output, tar_perm)
             loss_sum += loss.item()
 
+            del output
+            del output_class
+            del output_moves
+            del output_acc
+
         return loss_sum / len(val_dl), legals / len(val_dl), accs / len(val_dl)
 
 
@@ -84,7 +94,7 @@ def train(model: Seq2Seq, train_dl: DataLoader, opti, criterion, device):
             seq, tar, legal = seq.to(device), tar.to(device), legal.to(device)
             seq = seq.permute(1, 0)
             tar_perm = tar.permute(1, 0)
-
+            opti.zero_grad()
             output = model(seq, tar_perm, 1)
 
             output_class = output.permute(1, 0, 2)
@@ -96,13 +106,16 @@ def train(model: Seq2Seq, train_dl: DataLoader, opti, criterion, device):
 
             output = output[1:].reshape(-1, output.shape[2])
             tar_perm = tar_perm[1:].reshape(-1)
-
-            opti.zero_grad()
             loss = criterion(output, tar_perm)
 
             loss_sum += loss.item()
             loss.backward()
             opti.step()
+
+            del output
+            del output_class
+            del output_moves
+            del output_acc
         
         return loss_sum / len(train_dl), legals / len(train_dl), accs / len(train_dl)
 
@@ -140,11 +153,10 @@ if __name__ == "__main__":
     src_vocab_len = src_pad + 1
     tar_vocab_len = tar_pad + 1
 
-    # data params
     batch=512
     num_workers=32
-    frac = 0.1
-    valid_size = 0.2
+    frac = 0.5
+    valid_size = 0.1
 
     seq_train, seq_val, tar_train, tar_val, legals_train, legal_valid = load_data(csv_path, frac=frac, test_size=valid_size)
 
@@ -160,21 +172,16 @@ if __name__ == "__main__":
     print_(f"train len: {len(dataloader_train)}")
     print_(f"val len: {len(dataloader_val)}\n")
 
-    # train params
-    eps= 60
+    eps= 300
     lr = 0.001
     device = torch.device("cuda")
     embed = 512
     hidden = 512
     layers = 4
-    drop = 0.2
-
-    # acc validation params
-    samples = 10240
+    drop = 0
 
     model = Seq2Seq(src_vocab_len, tar_vocab_len, embed, hidden, layers, drop, src_pad, tar_pad).to(device)
 
-    # criterion = ChessLoss(tar_pad, tar_vocab_len, 1.5)
     criterion = nn.CrossEntropyLoss(ignore_index=tar_pad)
 
     opti = optim.Adam(model.parameters(), lr=lr)
