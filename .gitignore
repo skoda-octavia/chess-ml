@@ -1,5 +1,9 @@
 .vscode
 __pychache__/
+play_rap.txt
 
 # files with prepared data to large for git
 *.pt 
+data/raw/*
+data/prep/*
+models/
